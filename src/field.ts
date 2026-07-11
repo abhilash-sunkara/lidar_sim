@@ -39,6 +39,10 @@ export class Field{
         return this.obstacle_array;
     }
 
+    get_obstacle_filter(){
+        return this.obstacle_filter;
+    }
+
     private create_obstacle_filter(){
         for(let y = -320; y < 320; y += 10){
             let row = [];
@@ -89,7 +93,7 @@ export class Field{
                         }
                     }
                 }
-                blurred_array[y][x] = highest_score;
+                blurred_array[y][x] = highest_score ** 3;
             }
         }
         return blurred_array;
@@ -130,7 +134,7 @@ export class Field{
 
     render(ctx: CanvasRenderingContext2D){
         if(this.keys.p && !this.printed) {
-            this.print_high_weights(this.obstacle_filter)
+            //this.print_high_weights(this.obstacle_filter)
             this.printed = true;
         };
         ctx.fillStyle = 'red'; 

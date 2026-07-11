@@ -1,5 +1,10 @@
-import type { rect_obstacle } from "./field";
+import type { obstacle_probability, rect_obstacle } from "./field";
 import { check_rect_collision, check_wall_collision, get_distance, type lidar_ray, type point_vector } from "./raycast_utils";
+
+interface mcl_point{
+    position: point_vector,
+    weight: number,
+}
 
 export class Robot{
     private position: point_vector;
@@ -9,6 +14,13 @@ export class Robot{
     private obstacles: rect_obstacle[];
     private lidar_radius: number;
 
+    private field_map: number[][];
+
+    private mcl_points: mcl_point[];
+    private mcl_displacement: point_vector = {x: 0, y: 0};
+
+    private printed = false;
+
     private keys = {
         w: false,
         a: false,
@@ -17,15 +29,28 @@ export class Robot{
         p: false,
     };
     
-    constructor(start_x: number, start_y: number, obs: rect_obstacle[]) {
+    constructor(start_x: number, start_y: number, obs: rect_obstacle[], obs_filter: number[][]) {
         this.position = {x: start_x, y: start_y};
         this.size = 80;
         this.speed = 5;
         this.setupInputListeners();
         this.lidar_array = [];
-        this.lidar_radius = 200;
+        this.lidar_radius = 300;
         this.addLidarRays(this.lidar_radius, 100);
         this.obstacles = obs;
+
+        this.mcl_points = [];
+        this.addMCLPoints(10);
+
+        this.field_map = obs_filter;
+    }
+
+    private addMCLPoints(resolution: number){
+        for(let x = -320; x < 320; x += resolution){
+            for(let y = -320; y < 320; y += resolution){
+                this.mcl_points.push({position: {x: x, y: y}, weight: 0.0});
+            }
+        }
     }
 
     private addLidarRays(radius: number, num_rays: number){
@@ -54,16 +79,30 @@ export class Robot{
                 case 'KeyA': this.keys.a = false; break;
                 case 'KeyS': this.keys.s = false; break;
                 case 'KeyD': this.keys.d = false; break;
-                case 'KeyP': this.keys.p = false; break;
+                case 'KeyP': this.keys.p = false;
+                             this.printed = false; 
+                             break;
             }
         });
     }
 
     private updateRobotPosition() {
-        if (this.keys.w) this.position.y += this.speed;
-        if (this.keys.s) this.position.y -= this.speed;
-        if (this.keys.a) this.position.x -= this.speed;
-        if (this.keys.d) this.position.x += this.speed;
+        if (this.keys.w) {
+            this.position.y += this.speed;
+            this.mcl_displacement.y += this.speed;
+        }
+        if (this.keys.s) {
+            this.position.y -= this.speed;
+            this.mcl_displacement.y -= this.speed;
+        }
+        if (this.keys.a) {
+            this.position.x -= this.speed;
+            this.mcl_displacement.x -= this.speed;
+        }
+        if (this.keys.d) {
+            this.position.x += this.speed;
+            this.mcl_displacement.x += this.speed;
+        }
     }
 
     private updateLidarPosition() {
@@ -100,17 +139,128 @@ export class Robot{
         })
     }
 
+    private analyzeLidarPoints() {
+    let processed_rays = this.lidar_array.map((item) => {
+        let rel_x = item.end_pos.x - item.start_pos.x;
+        let rel_y = item.end_pos.y - item.start_pos.y;
+        
+        let ray_length = item.radius;
+        console.log(item.radius);
+        
+        return {
+            x: rel_x, 
+            y: rel_y, 
+            is_hit: ray_length < 299 
+        };
+    });
+
+    this.mcl_points.forEach((particle) => {
+        let total_error = 0; 
+        
+        let real_position: point_vector = {
+            x: particle.position.x + this.mcl_displacement.x, 
+            y: particle.position.y + this.mcl_displacement.y
+        };
+
+        let print = real_position.x == 0 && real_position.y == 0;
+        
+        processed_rays.forEach((ray) => {
+            let proj_x = ray.x + real_position.x;
+            let proj_y = ray.y + real_position.y;
+            
+            if(proj_x > -320 && proj_x < 320 && proj_y > -320 && proj_y < 320) {
+                let gridX = Math.floor(proj_x / 10) + 32;
+                let gridY = Math.floor(proj_y / 10) + 32;
+                
+                let map_value = this.field_map[gridY][gridX]; 
+                /* if(print){
+                    console.log("Map value: " + map_value);
+                } */
+                if (ray.is_hit) {
+                    total_error += (1.0 - map_value);
+                    
+                    if(print){
+                        console.log("Expected a ray hit here, map value is " + map_value);
+                    }
+                } else {
+                    total_error += (map_value * 2.0); 
+
+                    if(print){
+                        console.log("Expected empty space, map value is " + map_value);
+                    }
+                }
+            } else {
+                if (ray.is_hit) {
+                    total_error += 1.0; 
+                } else {
+                    total_error += 0; 
+                }
+            }
+        });
+        
+        particle.weight = 1000.0 / (total_error + 1.0);
+        if(print){
+            console.log("Final error is " + particle.weight)
+        } 
+    });
+
+    
+    this.mcl_points.sort((a, b) => (b.weight - a.weight));
+}
+
+    private getEstimatedPosition(): point_vector {
+    
+    this.mcl_points.sort((a, b) => b.weight - a.weight);
+
+    
+    let top_particles = this.mcl_points.slice(0, 5);
+
+    let total_weight = 0;
+    let weighted_x = 0;
+    let weighted_y = 0;
+
+    
+    top_particles.forEach(p => {
+        total_weight += p.weight;
+        weighted_x += (p.position.x + this.mcl_displacement.x) * p.weight;
+        weighted_y += (p.position.y + this.mcl_displacement.y) * p.weight;
+    });
+
+    
+    return {
+        x: weighted_x / total_weight,
+        y: weighted_y / total_weight
+    };
+}
+
     private printLidarMap(){
         this.lidar_array.forEach((item) => {
             //console.log("start x: " + item.start_pos.x + ", start y: " + item.start_pos.y + " end x: " + item.end_pos.x + ", end y: " + item.end_pos.y)
             //console.log("Radius: " + item.radius + ", Angle: " + item.angle)
         })
+
+        this.analyzeLidarPoints();
+        this.mcl_points.forEach((item) => {
+            
+            if(item.weight > 0){
+                console.log(`X: ${item.position.x + this.mcl_displacement.x}, Y: ${item.position.y + this.mcl_displacement.y}, Weight: ${item.weight}`);
+                this.printed = true;
+            }
+        })
+
+        let pos = this.getEstimatedPosition();
+        console.log("estimated X: " + pos.x + this.mcl_displacement.x + ", estimated Y: " + pos.y + this.mcl_displacement.y);
+
+        this.printed = true;
     }
 
+    
+
     render(ctx: CanvasRenderingContext2D){
-        if(this.keys.p) {this.printLidarMap()};
+        if(this.keys.p && !this.printed) {this.printLidarMap()};
         this.updateRobotPosition();
         this.updateLidarPosition();
+        //this.analyzeLidarPoints();
         ctx.fillStyle = 'black'; 
         
         

@@ -39,7 +39,7 @@ export function render(t: number){
 }
 
 let f = new Field();
-let r = new Robot(0, 0, f.get_obstacle_array());
+let r = new Robot(0, 0, f.get_obstacle_array(), f.get_obstacle_filter());
 initCanvas();
 
 render(0);
