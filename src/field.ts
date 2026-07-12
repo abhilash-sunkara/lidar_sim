@@ -5,12 +5,11 @@ export interface rect_obstacle{
     max: point_vector,
 }
 
-export interface obstacle_probability{
-    start: point_vector,
-    weight: number;
-}
-
 export class Field{
+
+    // obstacle_array is used for doing collisions with the lidar rays and is basically a list of rectangles
+    // obstacle_filter is used for the mcl algorithm and is 2d grid where each "cell" is the probabilty of an obstacle being there
+    // 1 is a known obstacle and 0 is known empty space
     private obstacle_array: rect_obstacle[];
     private obstacle_filter: number[][];
 
@@ -56,6 +55,7 @@ export class Field{
         }
     }
 
+    // blurs obstacle filter to allow/account for some randomness and leniency with hit detection
     private blur_obstacle_filter(grid: number[][]){
         const rows = grid.length;
         const cols = grid[0].length;
@@ -71,8 +71,9 @@ export class Field{
                     continue;
                 }
 
+                // basically draws a circle and finds how close the nearest obstacle is
+                // closer obstacle means higher final weight
                 let highest_score = 0;
-
                 for(let dy = -max_radius; dy <= max_radius; dy++){
                     for(let dx = -max_radius; dx <= max_radius; dx++){
                         let ny = y + dy;
@@ -93,7 +94,7 @@ export class Field{
                         }
                     }
                 }
-                blurred_array[y][x] = highest_score ** 3;
+                blurred_array[y][x] = highest_score ** 3; // cubed to make it not linear, makes error/hit detection for mcl algorithm better
             }
         }
         return blurred_array;

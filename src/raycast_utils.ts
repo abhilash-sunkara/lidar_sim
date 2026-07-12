@@ -1,10 +1,8 @@
 import type { rect_obstacle } from "./field";
 
 export interface lidar_ray {
-
     start_pos: point_vector;
     end_pos: point_vector;
-
     radius: number;
     angle: number;
 }
@@ -48,6 +46,7 @@ export function get_distance(start: point_vector, end: point_vector){
     return Math.sqrt((start.x - end.x) ** 2 + (start.y - end.y) ** 2);
 }
 
+//slab method for line and rectangle collision
 export function check_rect_collision(start: point_vector, angle: number, max_radius: number, box: rect_obstacle): point_vector | null{
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
