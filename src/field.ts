@@ -22,8 +22,20 @@ export class Field{
     constructor(){
         this.setupInputListeners();
         this.obstacle_array = [];
-        this.add_obstacle(160, 160, 240, 240);
-        this.add_obstacle(-160, 160, -80, 240);
+        this.add_obstacle(-20, -20, 20, 20);
+
+        this.add_obstacle(-106.667 - 20, -213.333 - 20, -106.667 + 20, -213.333 + 20);
+        this.add_obstacle(-213.333 - 20, -106.667 - 20, -213.333 + 20, -106.667 + 20);
+
+        this.add_obstacle(-106.667 - 20, 213.333 - 20, -106.667 + 20, 213.333 + 20);
+        this.add_obstacle(-213.333 - 20, 106.667 - 20, -213.333 + 20, 106.667 + 20);
+
+        this.add_obstacle(106.667 - 20, -213.333 - 20, 106.667 + 20, -213.333 + 20);
+        this.add_obstacle(213.333 - 20, -106.667 - 20, 213.333 + 20, -106.667 + 20);
+
+        this.add_obstacle(106.667 - 20, 213.333 - 20, 106.667 + 20, 213.333 + 20);
+        this.add_obstacle(213.333 - 20, 106.667 - 20, 213.333 + 20, 106.667 + 20);
+        //this.add_obstacle(-160, 160, -80, 240);
 
         this.obstacle_filter = [];
         this.create_obstacle_filter();

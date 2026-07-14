@@ -105,21 +105,28 @@ export class Robot{
         }
     }
 
+    //Box-Muller transform converts uniform noise into gaussian noise
+    private getGaussianNoise(mean = 0, stdDev = 1) {
+        let u1 = 1 - Math.random(); 
+        let u2 = 1 - Math.random(); 
+        let z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+        return z0 * stdDev + mean;
+    }
+
     private updateLidarPosition() {
         this.lidar_array.forEach((item) => {
-            let dx = this.position.x - item.start_pos.x;
-            let dy = this.position.y - item.start_pos.y;
+            //let dx = this.position.x - item.start_pos.x;
+            //let dy = this.position.y - item.start_pos.y;
 
             item.start_pos.x = this.position.x;
             item.start_pos.y = this.position.y;
-            item.end_pos.x = item.end_pos.x + dx;
-            item.end_pos.y = item.end_pos.y + dy;
+            //item.end_pos.x = item.end_pos.x + dx;
+            //item.end_pos.y = item.end_pos.y + dy;
 
-            if(item.radius < this.lidar_radius || Number.isNaN(item.radius)){
-                item.end_pos.x = this.lidar_radius * Math.cos(item.angle) + item.start_pos.x;
-                item.end_pos.y = this.lidar_radius * Math.sin(item.angle) + item.start_pos.y;
-            }
+            item.end_pos.x = this.lidar_radius * Math.cos(item.angle) + item.start_pos.x;
+            item.end_pos.y = this.lidar_radius * Math.sin(item.angle) + item.start_pos.y;
 
+            
 
             let new_endpoint: point_vector | null = check_wall_collision({x: item.start_pos.x, y: item.start_pos.y}, {x: item.end_pos.x, y: item.end_pos.y}, item.angle);
             if(new_endpoint){
@@ -134,6 +141,20 @@ export class Robot{
                     item.end_pos.y = new_wall_point.y;
                 }
             })
+
+            //converts to polar
+            let dx = item.end_pos.x - item.start_pos.x; 
+            let dy = item.end_pos.y - item.start_pos.y;
+            let distance = Math.sqrt(dx * dx + dy * dy);
+            let angle = Math.atan2(dy, dx);
+
+            //applies noise to distance
+            let range_noise = this.getGaussianNoise(0, 2.0); 
+            let noisy_distance = distance + range_noise;
+
+            //converts to rectangular
+            item.end_pos.x = noisy_distance * Math.cos(angle) + item.start_pos.x;
+            item.end_pos.y = noisy_distance * Math.sin(angle) + item.start_pos.y;
             
             item.radius = get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: item.end_pos.x, y: item.end_pos.y})
         })
@@ -145,14 +166,12 @@ export class Robot{
         let processed_rays = this.lidar_array.map((item) => {
             let rel_x = item.end_pos.x - item.start_pos.x;
             let rel_y = item.end_pos.y - item.start_pos.y;
-            
-            let ray_length = item.radius;
             //console.log(item.radius);
             
             return {
                 x: rel_x, 
                 y: rel_y, 
-                is_hit: ray_length < (this.lidar_radius - 1)
+                is_hit: item.radius < (this.lidar_radius - 1)
             };
         });
 
