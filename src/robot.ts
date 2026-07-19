@@ -19,6 +19,8 @@ export class Robot{
     private mcl_points: mcl_point[];
     private mcl_displacement: point_vector = {x: 0, y: 0};
 
+    private opp_rob_pos: point_vector;
+
     private printed = false;
 
     private keys = {
@@ -29,7 +31,7 @@ export class Robot{
         p: false,
     };
     
-    constructor(start_x: number, start_y: number, obs: rect_obstacle[], obs_filter: number[][]) {
+    constructor(start_x: number, start_y: number, obs: rect_obstacle[], obs_filter: number[][], orp: point_vector) {
         this.position = {x: start_x, y: start_y};
         this.size = 80;
         this.speed = 5;
@@ -43,6 +45,8 @@ export class Robot{
         this.addMCLPoints(10);
 
         this.field_map = obs_filter;
+
+        this.opp_rob_pos = orp;
     }
 
     private addMCLPoints(resolution: number){
@@ -133,15 +137,32 @@ export class Robot{
                 item.end_pos.x = new_endpoint.x;
                 item.end_pos.y = new_endpoint.y;
             }
-            
+
+            let new_wall_point_real: point_vector | null = {x: 0, y:0};
             this.obstacles.forEach((item_o) => {
                 let new_wall_point = check_rect_collision({x: item.start_pos.x, y: item.start_pos.y}, item.angle, this.lidar_radius, item_o);
                 if(new_wall_point){
                     item.end_pos.x = new_wall_point.x;
                     item.end_pos.y = new_wall_point.y;
+                    new_wall_point_real = new_wall_point;
                 }
             })
 
+            let new_orobot_point = check_rect_collision({x: item.start_pos.x, y: item.start_pos.y}, item.angle, this.lidar_radius, {min: {x: this.opp_rob_pos.x - 40, y: this.opp_rob_pos.y - 40}, max: {x: this.opp_rob_pos.x + 40, y: this.opp_rob_pos.y + 40}});
+            if(new_orobot_point){
+                item.end_pos.x = new_orobot_point.x;
+                item.end_pos.y = new_orobot_point.y;
+            }
+            console.log(new_wall_point_real)
+            if(new_orobot_point && new_wall_point_real){
+                if(get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: new_orobot_point.x, y: new_orobot_point.y}) < get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: new_wall_point_real.x, y: new_wall_point_real.y})){
+                    item.end_pos.x = new_orobot_point.x;
+                    item.end_pos.y = new_orobot_point.y;
+                } else if (new_wall_point_real.x != 0 && new_wall_point_real.y != 0) {
+                    item.end_pos.x = new_wall_point_real.x;
+                    item.end_pos.y = new_wall_point_real.y;
+                }
+            }
             //converts to polar
             let dx = item.end_pos.x - item.start_pos.x; 
             let dy = item.end_pos.y - item.start_pos.y;
@@ -203,13 +224,13 @@ export class Robot{
                         total_error += (1.0 - map_value);
                         
                         if(print){
-                            console.log("Expected a ray hit here, map value is " + map_value);
+                            //console.log("Expected a ray hit here, map value is " + map_value);
                         }
                     } else {
                         total_error += (map_value * 2.0); 
 
                         if(print){
-                            console.log("Expected empty space, map value is " + map_value);
+                            //console.log("Expected empty space, map value is " + map_value);
                         }
                     }
                 } else {
@@ -266,7 +287,7 @@ export class Robot{
         this.mcl_points.forEach((item) => {
             
             if(item.weight > 0){
-                console.log(`X: ${item.position.x + this.mcl_displacement.x}, Y: ${item.position.y + this.mcl_displacement.y}, Weight: ${item.weight}`);
+                //console.log(`X: ${item.position.x + this.mcl_displacement.x}, Y: ${item.position.y + this.mcl_displacement.y}, Weight: ${item.weight}`);
                 this.printed = true;
             }
         })

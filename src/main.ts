@@ -1,4 +1,5 @@
 import { Field } from './field';
+import { OpponentRobot } from './opponent_robot';
 import { Robot } from './robot';
 import './style.css'
 
@@ -34,12 +35,15 @@ export function render(t: number){
 
   r.render(ctx);
   f.render(ctx);
+  or.render(ctx);
 
   window.requestAnimationFrame(render);
 }
 
 let f = new Field();
-let r = new Robot(-240, 0, f.get_obstacle_array(), f.get_obstacle_filter());
+let or = new OpponentRobot();
+let r = new Robot(-240, 0, f.get_obstacle_array(), f.get_obstacle_filter(), or.get_pos_object());
+
 initCanvas();
 
 render(0);

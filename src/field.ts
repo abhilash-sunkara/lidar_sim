@@ -61,6 +61,9 @@ export class Field{
                 let isObstacle = this.obstacle_array.some((item) => {
                     return (x >= item.min.x && x <= item.max.x && y >= item.min.y && y <= item.max.y);
                 })
+
+                //wall check
+                isObstacle = isObstacle || (y == -320 || y == 310 || x == -320 || x == -310);
                 row.push(isObstacle ? 1 : 0);
             }
             this.obstacle_filter.push(row);
