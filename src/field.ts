@@ -63,7 +63,7 @@ export class Field{
                 })
 
                 //wall check
-                isObstacle = isObstacle || (y == -320 || y == 310 || x == -320 || x == -310);
+                isObstacle = isObstacle || (y == -320 || y == 310 || x == -320 || x == 310);
                 row.push(isObstacle ? 1 : 0);
             }
             this.obstacle_filter.push(row);

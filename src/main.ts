@@ -10,7 +10,26 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = /*html*/`
 <section class = "bg-gray-600 ">
   <div class="h-screen flex flex-col items-center justify-start p-4">
     <h1 class="text-4xl text-indigo-200 m-4">LIDAR Simulation</h1>
-    <canvas id="canvas" class="bg-white border-4 border-indigo-500 rounded-lg shadow-xl h-160 w-160"></canvas>
+    <div class = "w-full flex justify-evenly items-start">
+      <canvas id="canvas" class="bg-white border-4 border-indigo-500 rounded-lg shadow-xl h-160 w-160"></canvas>
+      <div class = "flex-col items-start justify-center">
+        <h1 class = "text-3xl text-indigo-200"> 
+          Actual Position
+        </h1>
+        <div class = "flex flex-row">
+          <h1 id = "actual-x" class = "text-3xl text-indigo-200 mr-2"/> 
+          <h1 id = "actual-y" class = "text-3xl text-indigo-200"/> 
+        </div>
+        <h1 class = "text-3xl text-indigo-200"> 
+          Expected Position
+        </h1>
+        <div class = "flex flex-row">
+          <h1 id = "expected-x" class = "text-3xl text-indigo-200 mr-2"/> 
+          <h1 id = "expected-y" class = "text-3xl text-indigo-200"/> 
+        </div>
+      </div>
+    </div>
+    
   </div>
 </section>
 `

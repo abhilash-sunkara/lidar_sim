@@ -34,11 +34,12 @@ export class Robot{
     private field_map: number[][];
 
     private mcl_points: mcl_point[];
-    private mcl_displacement: point_vector = {x: 0, y: 0};
 
     private opp_rob_pos: point_vector;
 
     private printed = false;
+
+    private expected_position: point_vector = {x: 0, y: 0};
 
     private keys = {
         w: false,
@@ -59,18 +60,19 @@ export class Robot{
         this.obstacles = obs;
 
         this.mcl_points = [];
-        this.addMCLPoints(10);
+        this.addMCLPoints(300);
 
         this.field_map = obs_filter;
 
         this.opp_rob_pos = orp;
     }
 
-    private addMCLPoints(resolution: number){
-        for(let x = -320; x < 320; x += resolution){
-            for(let y = -320; y < 320; y += resolution){
-                this.mcl_points.push({position: {x: x, y: y}, weight: 0.0});
-            }
+    private addMCLPoints(num_particles: number) {
+        this.mcl_points = [];
+        for (let i = 0; i < num_particles; i++) {
+            let rx = (Math.random() * 640) - 320;
+            let ry = (Math.random() * 640) - 320;
+            this.mcl_points.push({ position: { x: rx, y: ry }, weight: 1.0 / num_particles });
         }
     }
 
@@ -108,21 +110,23 @@ export class Robot{
     }
 
     private updateRobotPosition() {
-        if (this.keys.w) {
-            this.position.y += this.speed;
-            this.mcl_displacement.y += this.speed;
-        }
-        if (this.keys.s) {
-            this.position.y -= this.speed;
-            this.mcl_displacement.y -= this.speed;
-        }
-        if (this.keys.a) {
-            this.position.x -= this.speed;
-            this.mcl_displacement.x -= this.speed;
-        }
-        if (this.keys.d) {
-            this.position.x += this.speed;
-            this.mcl_displacement.x += this.speed;
+        let dx = 0;
+        let dy = 0;
+
+        if (this.keys.w) dy += this.speed;
+        if (this.keys.s) dy -= this.speed;
+        if (this.keys.a) dx -= this.speed;
+        if (this.keys.d) dx += this.speed;
+
+        if (dx !== 0 || dy !== 0) {
+            this.position.x += dx;
+            this.position.y += dy;
+
+            //odom noise
+            this.mcl_points.forEach((p) => {
+                p.position.x += dx + this.getGaussianNoise(0, 1.5);
+                p.position.y += dy + this.getGaussianNoise(0, 1.5);
+            });
         }
     }
 
@@ -213,15 +217,13 @@ export class Robot{
             };
         });
 
+        let sum_weights = 0;
         // Loops through each particle in the sim, "moves"/projevcts the processed rays to the position of each point
         // After this compares the actual "is_hit" value with the expected one if the robot was at the position of the mcl point
         this.mcl_points.forEach((particle) => {
             let total_error = 0; 
             
-            let real_position: point_vector = {
-                x: particle.position.x + this.mcl_displacement.x, 
-                y: particle.position.y + this.mcl_displacement.y
-            };
+            let real_position = particle.position;
 
             let print = real_position.x == 0 && real_position.y == 0;
             
@@ -260,13 +262,18 @@ export class Robot{
             });
             
             particle.weight = 1000.0 / (total_error + 1.0);
+            sum_weights += particle.weight;
             if(print){
                 console.log("Final error is " + particle.weight)
             } 
         });
 
+        this.mcl_points.forEach((particle) => {
+            particle.weight /= sum_weights;
+        });
+
         
-        this.mcl_points.sort((a, b) => (b.weight - a.weight));
+       // this.mcl_points.sort((a, b) => (b.weight - a.weight));
     }
 
     private getEstimatedPosition(): point_vector {
@@ -283,8 +290,8 @@ export class Robot{
         
         top_particles.forEach(p => {
             total_weight += p.weight;
-            weighted_x += (p.position.x + this.mcl_displacement.x) * p.weight;
-            weighted_y += (p.position.y + this.mcl_displacement.y) * p.weight;
+            weighted_x += p.position.x * p.weight; 
+            weighted_y += p.position.y * p.weight;
         });
 
         
@@ -292,6 +299,47 @@ export class Robot{
             x: weighted_x / total_weight,
             y: weighted_y / total_weight
         };
+    }
+
+    //stochastic universal sampling with random injection cause point cloud would get stuck in some location
+    private resampleParticles() {
+        let new_particles: mcl_point[] = [];
+        let num_particles = this.mcl_points.length;
+        
+        let random_injection_rate = 0.05; 
+        let num_resample = Math.floor(num_particles * (1.0 - random_injection_rate));
+        let num_random = num_particles - num_resample;
+
+        //interval math
+        let r = Math.random() / num_particles; 
+        let c = this.mcl_points[0].weight;
+        let index = 0;
+
+        for (let i = 0; i < num_resample; i++) {
+            let u = r + (i / num_particles);
+            
+            while (u > c) {
+                index = (index + 1) % num_particles;
+                c += this.mcl_points[index].weight;
+            }
+            
+            new_particles.push({
+                position: { x: this.mcl_points[index].position.x, y: this.mcl_points[index].position.y },
+                weight: 1.0 / num_particles 
+            });
+        }
+
+        //random injection to allow points to escape out of "local minimum"
+        for (let i = 0; i < num_random; i++) {
+            let rx = (Math.random() * 640) - 320;
+            let ry = (Math.random() * 640) - 320;
+            new_particles.push({ 
+                position: { x: rx, y: ry }, 
+                weight: 1.0 / num_particles 
+            });
+        }
+
+        this.mcl_points = new_particles;
     }
 
     private generateClusters() {
@@ -418,6 +466,10 @@ export class Robot{
         this.updateLidarPosition();
         this.generateClusters();
         this.analyzeClusters();
+
+        this.analyzeLidarPoints();
+        this.expected_position = this.getEstimatedPosition();
+        this.resampleParticles();
         //this.analyzeLidarPoints();
         ctx.fillStyle = 'black'; 
         
@@ -445,5 +497,30 @@ export class Robot{
         ctx.stroke();
 
         ctx.fillRect(this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size);
+
+        ctx.fillStyle = 'orange';
+        this.mcl_points.forEach(p => {
+            ctx.fillRect(p.position.x, p.position.y, 2, 2);
+        });
+
+        const actual_x_element = document.getElementById("actual-x");
+        if(actual_x_element){
+            actual_x_element.innerText = `${this.position.x},`
+        }
+
+        const actual_y_element = document.getElementById("actual-y");
+        if(actual_y_element){
+            actual_y_element.innerText = `${this.position.y}`
+        }
+
+        const expected_x_element = document.getElementById("expected-x");
+        if(expected_x_element){
+            expected_x_element.innerText = `${this.expected_position.x.toFixed(1)},`
+        }
+
+        const expected_y_element = document.getElementById("expected-y");
+        if(expected_y_element){
+            expected_y_element.innerText = `${this.expected_position.y.toFixed(1)}`
+        }
     }
 };
