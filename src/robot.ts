@@ -6,6 +6,21 @@ interface mcl_point{
     weight: number,
 }
 
+interface cluster{
+    points: lidar_ray[],
+    obstacle_type: string,
+    min: point_vector,
+    max: point_vector,
+
+}
+
+const ObstacleType = {
+    WALL: "WALL",
+    ROBOT : "ROBOT",
+    TEMP : "TEMP",
+    FIELD_OBSTACLE : "FIELD_OBSTACLE"
+}
+
 export class Robot{
     private position: point_vector;
     private size: number;
@@ -13,6 +28,8 @@ export class Robot{
     private lidar_array: lidar_ray[];
     private obstacles: rect_obstacle[];
     private lidar_radius: number;
+
+    private detected_objects: cluster[] = [];
 
     private field_map: number[][];
 
@@ -153,7 +170,7 @@ export class Robot{
                 item.end_pos.x = new_orobot_point.x;
                 item.end_pos.y = new_orobot_point.y;
             }
-            console.log(new_wall_point_real)
+            //console.log(new_wall_point_real)
             if(new_orobot_point && new_wall_point_real){
                 if(get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: new_orobot_point.x, y: new_orobot_point.y}) < get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: new_wall_point_real.x, y: new_wall_point_real.y})){
                     item.end_pos.x = new_orobot_point.x;
@@ -277,6 +294,99 @@ export class Robot{
         };
     }
 
+    private generateClusters() {
+        this.detected_objects = [];
+        if (!this.lidar_array || this.lidar_array.length === 0) return;
+
+        let current_cluster: cluster = { points: [], obstacle_type: ObstacleType.TEMP, min: {x: 0, y: 0}, max: {x: 0, y: 0} };
+        let prev_point: lidar_ray = this.lidar_array[0];
+        
+        current_cluster.points.push(prev_point);
+
+        for (let i = 1; i < this.lidar_array.length; i++) {
+            let item = this.lidar_array[i];
+            let distance_between = get_distance(item.end_pos, prev_point.end_pos);
+            
+            let average_radius = (item.radius + prev_point.radius) / 2;
+
+            let expected_gap = average_radius * 0.0628;
+            let threshold = (expected_gap * 1.5) + 10; 
+
+            if (distance_between < threshold) {
+                current_cluster.points.push(item);
+            } else {
+                if (current_cluster.points.length > 1) {
+                    let sum_radius = 0;
+                    for (let p of current_cluster.points) {
+                        sum_radius += p.radius;
+                    }
+                    let avg_radius = sum_radius / current_cluster.points.length;
+
+                    if (avg_radius < this.lidar_radius - 20) {
+                        this.detected_objects.push(current_cluster);
+                    }
+                }
+                current_cluster = { points: [item], obstacle_type: ObstacleType.TEMP,  min: {x: 0, y: 0}, max: {x: 0, y: 0}};
+            }
+            
+            prev_point = item;
+        }
+
+        if (current_cluster.points.length > 1) {
+            this.detected_objects.push(current_cluster);
+        }
+
+        if (this.detected_objects.length > 1) {
+            let first_cluster = this.detected_objects[0];
+            let last_cluster = this.detected_objects[this.detected_objects.length - 1];
+
+            let first_point = first_cluster.points[0];
+            let last_point = last_cluster.points[last_cluster.points.length - 1];
+
+            let wrap_distance = get_distance(first_point.end_pos, last_point.end_pos);
+            let average_wrap_radius = (first_point.radius + last_point.radius) / 2;
+            let wrap_threshold = (average_wrap_radius * 0.0628 * 1.5) + 10;
+
+            if (wrap_distance < wrap_threshold) {
+                first_cluster.points = last_cluster.points.concat(first_cluster.points);
+                this.detected_objects.pop();
+            }
+        }
+
+    }
+
+    private analyzeClusters(){
+        this.detected_objects.forEach((item) => {
+            let minX = 320;
+            let maxX = -320;
+            let minY = 320;
+            let maxY = -320;
+
+            item.points.forEach((point) => {
+                if(point.end_pos.x < minX){
+                    minX = point.end_pos.x;
+                }
+                if(point.end_pos.x > maxX){
+                    maxX = point.end_pos.x;
+                }
+                if(point.end_pos.y < minY){
+                    minY = point.end_pos.y;
+                }
+                if(point.end_pos.y > maxY){
+                    maxY = point.end_pos.y;
+                }
+            })
+
+            if((maxX - minX > 150) || (maxY - minY > 150)){
+                item.obstacle_type = ObstacleType.WALL
+            } else {
+                item.obstacle_type = ObstacleType.FIELD_OBSTACLE
+            }
+            item.min = {x: minX, y: minY}
+            item.max = {x: maxX, y: maxY}
+        })
+    }
+
     private printLidarMap(){
         this.lidar_array.forEach((item) => {
             //console.log("start x: " + item.start_pos.x + ", start y: " + item.start_pos.y + " end x: " + item.end_pos.x + ", end y: " + item.end_pos.y)
@@ -292,9 +402,11 @@ export class Robot{
             }
         })
 
-        let pos = this.getEstimatedPosition();
-        console.log("estimated X: " + pos.x + this.mcl_displacement.x + ", estimated Y: " + pos.y + this.mcl_displacement.y);
-
+        //let pos = this.getEstimatedPosition();
+        //console.log("estimated X: " + pos.x + this.mcl_displacement.x + ", estimated Y: " + pos.y + this.mcl_displacement.y);
+        //this.generateClusters();
+        //this.analyzeClusters();
+        this.detected_objects.forEach((item) => {console.log(item)})
         this.printed = true;
     }
 
@@ -304,6 +416,8 @@ export class Robot{
         if(this.keys.p && !this.printed) {this.printLidarMap()};
         this.updateRobotPosition();
         this.updateLidarPosition();
+        this.generateClusters();
+        this.analyzeClusters();
         //this.analyzeLidarPoints();
         ctx.fillStyle = 'black'; 
         
@@ -318,6 +432,16 @@ export class Robot{
 
         ctx.strokeStyle = 'blue';
         ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath(); 
+
+        this.detected_objects.forEach((item) => {
+            ctx.rect(item.min.x, item.min.y, item.max.x - item.min.x, item.max.y - item.min.y);
+        })
+
+        ctx.strokeStyle = 'purple'; 
+        ctx.lineWidth = 3;
         ctx.stroke();
 
         ctx.fillRect(this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size);
