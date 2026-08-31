@@ -27,6 +27,28 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = /*html*/`
           <h1 id = "expected-x" class = "text-3xl text-indigo-200 mr-2"/> 
           <h1 id = "expected-y" class = "text-3xl text-indigo-200"/> 
         </div>
+        <div class="flex flex-col w-full">
+          <label htmlFor="startingAngle" class="text-indigo-200 text-lg mb-1">Starting Angle</label>
+          <input 
+            type="number"
+            id="startingAngle"
+            name="startingAngle" 
+            value="0"
+            step="any"
+            class="border p-2 rounded text-black bg-white"
+          />
+        </div>
+        <div class="flex flex-col w-full">
+          <label htmlFor="endingAngle" class="text-indigo-200 text-lg mb-1">Ending Angle</label>
+          <input 
+            type="number"
+            id="endingAngle"
+            name="endingAngle" 
+            value="6.28"
+            step="any"
+            class="border p-2 rounded text-black bg-white"
+          />
+        </div>
       </div>
     </div>
     
@@ -49,10 +71,16 @@ export function initCanvas() {
   ctx.scale(1, -1);  
 }
 
+const startAngleInput = document.getElementById('startingAngle') as HTMLInputElement;
+const endAngleInput = document.getElementById('endingAngle') as HTMLInputElement;
+
 export function render(t: number){
   ctx.clearRect(-320, -320, 640, 640);
 
-  r.render(ctx);
+  const startAngle = parseFloat(startAngleInput.value) || 0;
+  const endAngle = parseFloat(endAngleInput.value) || 0;
+
+  r.render(ctx, startAngle, endAngle);
   f.render(ctx);
   or.render(ctx);
 

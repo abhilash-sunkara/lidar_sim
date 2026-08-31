@@ -41,6 +41,9 @@ export class Robot{
 
     private expected_position: point_vector = {x: 0, y: 0};
 
+    private starting_angle: number = 0 * Math.PI;
+    private ending_angle: number = 1 * Math.PI;
+
     private keys = {
         w: false,
         a: false,
@@ -77,11 +80,15 @@ export class Robot{
     }
 
     private addLidarRays(radius: number, num_rays: number){
+        this.lidar_array = [];
         for(let i = 0; i < num_rays; i++){
             let angle = i * (2 * Math.PI / num_rays);
             let eX = radius * Math.cos(angle) + this.position.x;
             let eY = radius * Math.sin(angle) + this.position.y;
-            this.lidar_array.push({start_pos: {x: this.position.x, y: this.position.y}, end_pos: {x: eX, y: eY}, radius: radius, angle: angle})
+
+            if(angle >= this.starting_angle && angle <= this.ending_angle){
+                this.lidar_array.push({start_pos: {x: this.position.x, y: this.position.y}, end_pos: {x: eX, y: eY}, radius: radius, angle: angle})
+            }
         }
     }
 
@@ -460,7 +467,7 @@ export class Robot{
 
     
 
-    render(ctx: CanvasRenderingContext2D){
+    render(ctx: CanvasRenderingContext2D, s_angle: number, e_angle: number){
         if(this.keys.p && !this.printed) {this.printLidarMap()};
         this.updateRobotPosition();
         this.updateLidarPosition();
@@ -470,6 +477,15 @@ export class Robot{
         this.analyzeLidarPoints();
         this.expected_position = this.getEstimatedPosition();
         this.resampleParticles();
+
+
+        if(s_angle != this.starting_angle || e_angle != this.ending_angle){
+            this.starting_angle = s_angle;
+            this.ending_angle = e_angle;
+            console.log("trying to add new rays");
+            this.addLidarRays(this.lidar_radius, 100);
+        }
+
         //this.analyzeLidarPoints();
         ctx.fillStyle = 'black'; 
         
