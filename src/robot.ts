@@ -353,44 +353,49 @@ export class Robot{
         this.detected_objects = [];
         if (!this.lidar_array || this.lidar_array.length === 0) return;
 
-        let current_cluster: cluster = { points: [], obstacle_type: ObstacleType.TEMP, min: {x: 0, y: 0}, max: {x: 0, y: 0} };
-        let prev_point: lidar_ray = this.lidar_array[0];
+        const DELTA_PHI = 0.0628; // Angular resolution in radians 
+        const LAMBDA = 0.174;    // Expected incidence angle 
+        const SIGMA_R = 2;     // Standard deviation
+
+        const ADAPTIVE_FACTOR = Math.sin(DELTA_PHI) / Math.sin(LAMBDA - DELTA_PHI);
+
+        let current_cluster: cluster = { 
+            points: [], 
+            obstacle_type: ObstacleType.TEMP, 
+            min: {x: 0, y: 0}, 
+            max: {x: 0, y: 0} 
+        };
         
+        let prev_point: lidar_ray = this.lidar_array[0];
         current_cluster.points.push(prev_point);
 
         for (let i = 1; i < this.lidar_array.length; i++) {
             let item = this.lidar_array[i];
             let distance_between = get_distance(item.end_pos, prev_point.end_pos);
-            
-            let average_radius = (item.radius + prev_point.radius) / 2;
+            let radius_diff = Math.abs(item.radius - prev_point.radius);
 
-            let expected_gap = average_radius * 0.0628;
-            let threshold = (expected_gap * 1.5) + 10; 
+            let r_min = Math.min(prev_point.radius, item.radius);
+            let threshold = (r_min * ADAPTIVE_FACTOR) + (3 * SIGMA_R);
 
-            if (distance_between < threshold) {
+            if (distance_between < threshold && radius_diff < 20) {
                 current_cluster.points.push(item);
             } else {
-                if (current_cluster.points.length > 1) {
-                    let sum_radius = 0;
-                    for (let p of current_cluster.points) {
-                        sum_radius += p.radius;
-                    }
-                    let avg_radius = sum_radius / current_cluster.points.length;
-
-                    if (avg_radius < this.lidar_radius - 20) {
-                        this.detected_objects.push(current_cluster);
-                    }
-                }
-                current_cluster = { points: [item], obstacle_type: ObstacleType.TEMP,  min: {x: 0, y: 0}, max: {x: 0, y: 0}};
+                this.finalizeCluster(current_cluster);
+                current_cluster = { 
+                    points: [item], 
+                    obstacle_type: ObstacleType.TEMP, 
+                    min: {x: 0, y: 0}, 
+                    max: {x: 0, y: 0}
+                };
             }
             
             prev_point = item;
         }
 
-        if (current_cluster.points.length > 1) {
-            this.detected_objects.push(current_cluster);
-        }
+        // Finalize trailing cluster
+        this.finalizeCluster(current_cluster);
 
+        // Handle 360-degree array wrap-around
         if (this.detected_objects.length > 1) {
             let first_cluster = this.detected_objects[0];
             let last_cluster = this.detected_objects[this.detected_objects.length - 1];
@@ -399,48 +404,92 @@ export class Robot{
             let last_point = last_cluster.points[last_cluster.points.length - 1];
 
             let wrap_distance = get_distance(first_point.end_pos, last_point.end_pos);
-            let average_wrap_radius = (first_point.radius + last_point.radius) / 2;
-            let wrap_threshold = (average_wrap_radius * 0.0628 * 1.5) + 10;
+            let r_min_wrap = Math.min(first_point.radius, last_point.radius);
+            let wrap_threshold = (r_min_wrap * ADAPTIVE_FACTOR) + (3 * SIGMA_R);
 
             if (wrap_distance < wrap_threshold) {
                 first_cluster.points = last_cluster.points.concat(first_cluster.points);
                 this.detected_objects.pop();
             }
         }
-
     }
 
-    private analyzeClusters(){
-        this.detected_objects.forEach((item) => {
-            let minX = 320;
-            let maxX = -320;
-            let minY = 320;
-            let maxY = -320;
+    private finalizeCluster(cluster: cluster) {
+        if (cluster.points.length <= 1) return;
 
-            item.points.forEach((point) => {
-                if(point.end_pos.x < minX){
-                    minX = point.end_pos.x;
-                }
-                if(point.end_pos.x > maxX){
-                    maxX = point.end_pos.x;
-                }
-                if(point.end_pos.y < minY){
-                    minY = point.end_pos.y;
-                }
-                if(point.end_pos.y > maxY){
-                    maxY = point.end_pos.y;
-                }
-            })
+        let sum_radius = cluster.points.reduce((acc, p) => acc + p.radius, 0);
+        let avg_radius = sum_radius / cluster.points.length;
 
-            if((maxX - minX > 150) || (maxY - minY > 150)){
-                item.obstacle_type = ObstacleType.WALL
-            } else {
-                item.obstacle_type = ObstacleType.FIELD_OBSTACLE
-            }
-            item.min = {x: minX, y: minY}
-            item.max = {x: maxX, y: maxY}
-        })
+        if (avg_radius < this.lidar_radius - 20) {
+            this.detected_objects.push(cluster);
+        }
     }
+
+   private analyzeClusters() {
+    this.detected_objects.forEach((item) => {
+        const points = item.points.map(p => p.end_pos);
+        const count = points.length;
+        if (count === 0) return;
+
+        
+        let sumX = 0, sumY = 0;
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+
+        points.forEach(p => {
+            sumX += p.x;
+            sumY += p.y;
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+        });
+
+        const meanX = sumX / count;
+        const meanY = sumY / count;
+
+        
+        item.min = { x: minX, y: minY };
+        item.max = { x: maxX, y: maxY };
+
+        
+        let varXX = 0, varYY = 0, varXY = 0;
+        points.forEach(p => {
+            const dx = p.x - meanX;
+            const dy = p.y - meanY;
+            varXX += dx * dx;
+            varYY += dy * dy;
+            varXY += dx * dy;
+        });
+
+        varXX /= count;
+        varYY /= count;
+        varXY /= count;
+
+        
+        const trace = varXX + varYY;
+        const det = (varXX * varYY) - (varXY * varXY);
+        const term = Math.sqrt(Math.max(0, (trace * trace / 4) - det));
+        
+        const lambda1 = (trace / 2) + term; 
+        const lambda2 = (trace / 2) - term; 
+        
+        const linearity = (lambda1 - lambda2) / (lambda1 + lambda2 + 1e-6); 
+        const majorLength = 2 * Math.sqrt(lambda1) * Math.sqrt(3);          
+
+        
+        const WALL_LENGTH_THRESHOLD = 150; 
+        const LINEARITY_THRESHOLD = 0.85;   
+
+        if (majorLength > WALL_LENGTH_THRESHOLD && linearity > LINEARITY_THRESHOLD) {
+            item.obstacle_type = ObstacleType.WALL;
+        } else if (majorLength <= 40 && linearity < 0.6) {
+            item.obstacle_type = ObstacleType.ROBOT; 
+        } else {
+            item.obstacle_type = ObstacleType.FIELD_OBSTACLE;
+        }
+    });
+}
 
     private printLidarMap(){
         this.lidar_array.forEach((item) => {
@@ -502,15 +551,34 @@ export class Robot{
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        ctx.beginPath(); 
-
         this.detected_objects.forEach((item) => {
-            ctx.rect(item.min.x, item.min.y, item.max.x - item.min.x, item.max.y - item.min.y);
-        })
+        ctx.beginPath();
+        ctx.rect(
+            item.min.x, 
+            item.min.y, 
+            item.max.x - item.min.x, 
+            item.max.y - item.min.y
+        );
 
-        ctx.strokeStyle = 'purple'; 
+        // Assign stroke color based on obstacle type
+        switch (item.obstacle_type) {
+            case ObstacleType.WALL:
+                ctx.strokeStyle = 'purple';
+                break;
+            case ObstacleType.ROBOT:
+                ctx.strokeStyle = 'orange';
+                break;
+            case ObstacleType.FIELD_OBSTACLE:
+                ctx.strokeStyle = 'cyan';
+                break;
+            default:
+                ctx.strokeStyle = 'gray';
+                break;
+        }
+
         ctx.lineWidth = 3;
         ctx.stroke();
+    });
 
         ctx.fillRect(this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size);
 
