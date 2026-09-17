@@ -2,8 +2,14 @@ import type {rect_obstacle} from "./field";
 import { check_rect_collision, check_wall_collision, get_distance, type lidar_ray, type point_vector } from "./raycast_utils";
 
 interface mcl_point{
-    position: point_vector,
+    position: position_t,
     weight: number,
+}
+
+interface position_t{
+    x: number;
+    y: number;
+    heading: number;
 }
 
 interface cluster{
@@ -22,12 +28,14 @@ const ObstacleType = {
 }
 
 export class Robot{
-    private position: point_vector;
+    private position: position_t;
+    //private heading: number;
     private size: number;
     private speed: number;
     private lidar_array: lidar_ray[];
     private obstacles: rect_obstacle[];
     private lidar_radius: number;
+    private need_to_update_lidar_angle: boolean = false;
 
     private detected_objects: cluster[] = [];
 
@@ -39,7 +47,7 @@ export class Robot{
 
     private printed = false;
 
-    private expected_position: point_vector = {x: 0, y: 0};
+    private expected_position: position_t = {x: 0, y: 0, heading: 0};
 
     private starting_angle: number = 0 * Math.PI;
     private ending_angle: number = 1 * Math.PI;
@@ -49,11 +57,14 @@ export class Robot{
         a: false,
         s: false,
         d: false,
+        q: false,
+        e: false,
         p: false,
     };
     
     constructor(start_x: number, start_y: number, obs: rect_obstacle[], obs_filter: number[][], orp: point_vector) {
-        this.position = {x: start_x, y: start_y};
+        this.position = {x: start_x, y: start_y, heading: 0};
+        //this.heading = 0;
         this.size = 80;
         this.speed = 5;
         this.setupInputListeners();
@@ -75,7 +86,8 @@ export class Robot{
         for (let i = 0; i < num_particles; i++) {
             let rx = (Math.random() * 640) - 320;
             let ry = (Math.random() * 640) - 320;
-            this.mcl_points.push({ position: { x: rx, y: ry }, weight: 1.0 / num_particles });
+            let heading = 0;//(Math.random() * 360);
+            this.mcl_points.push({ position: { x: rx, y: ry, heading}, weight: 1.0 / num_particles });
         }
     }
 
@@ -100,6 +112,8 @@ export class Robot{
                 case 'KeyS': this.keys.s = true; break;
                 case 'KeyD': this.keys.d = true; break;
                 case 'KeyP': this.keys.p = true; break;
+                case 'KeyQ': this.keys.q = true; break;
+                case 'KeyE': this.keys.e = true; break;
             }
         });
 
@@ -109,6 +123,8 @@ export class Robot{
                 case 'KeyA': this.keys.a = false; break;
                 case 'KeyS': this.keys.s = false; break;
                 case 'KeyD': this.keys.d = false; break;
+                case 'KeyQ': this.keys.q = false; break;
+                case 'KeyE': this.keys.e = false; break;
                 case 'KeyP': this.keys.p = false;
                              this.printed = false; 
                              break;
@@ -119,20 +135,26 @@ export class Robot{
     private updateRobotPosition() {
         let dx = 0;
         let dy = 0;
+        let d_theta = 0;
 
         if (this.keys.w) dy += this.speed;
         if (this.keys.s) dy -= this.speed;
         if (this.keys.a) dx -= this.speed;
         if (this.keys.d) dx += this.speed;
+        //if (this.keys.q) d_theta -= this.speed/50;
+        //if (this.keys.e) d_theta += this.speed/50;
+        if(this.keys.e || this.keys.q) this.need_to_update_lidar_angle = true;
 
-        if (dx !== 0 || dy !== 0) {
+        if (dx !== 0 || dy !== 0 || d_theta !== 0) {
             this.position.x += dx;
             this.position.y += dy;
+            this.position.heading += d_theta;
 
             //odom noise
             this.mcl_points.forEach((p) => {
                 p.position.x += dx + this.getGaussianNoise(0, 1.5);
                 p.position.y += dy + this.getGaussianNoise(0, 1.5);
+                p.position.heading += d_theta + this.getGaussianNoise(0, 0.2);
             });
         }
     }
@@ -154,6 +176,14 @@ export class Robot{
             item.start_pos.y = this.position.y;
             //item.end_pos.x = item.end_pos.x + dx;
             //item.end_pos.y = item.end_pos.y + dy;
+
+            let heading_offset = this.position.heading / 180 * Math.PI;
+            //let original_angle = item.angle;
+            if(this.need_to_update_lidar_angle){
+                item.angle = item.angle + heading_offset;
+                
+            }
+            
 
             item.end_pos.x = this.lidar_radius * Math.cos(item.angle) + item.start_pos.x;
             item.end_pos.y = this.lidar_radius * Math.sin(item.angle) + item.start_pos.y;
@@ -206,35 +236,54 @@ export class Robot{
             item.end_pos.y = noisy_distance * Math.sin(angle) + item.start_pos.y;
             
             item.radius = get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: item.end_pos.x, y: item.end_pos.y})
+            //item.angle = original_angle;
         })
+        this.need_to_update_lidar_angle = false;
     }
 
     private analyzeLidarPoints() {
-        // Loops through all lidar rays, grabs their "relative" distance and tags them with if it hit a wall or not
+        //loops through lidar rays to make a set of all rays that hit a known field obstacle.
+        //used for checking if one hit later
+        let field_obstacle_rays = new Set<lidar_ray>();
+        this.detected_objects.forEach((item) => {
+            if(item.obstacle_type == ObstacleType.FIELD_OBSTACLE) {
+                item.points.forEach((l_item) => {
+                    field_obstacle_rays.add(l_item);
+                });
+            }
+        });
 
+        //process all rays, and tag dynamic obstacles
+        //ignore if is_hit and is_dynamic_obstacle (basically any hit that is not a field obstacle)
         let processed_rays = this.lidar_array.map((item) => {
             let rel_x = item.end_pos.x - item.start_pos.x;
             let rel_y = item.end_pos.y - item.start_pos.y;
-            //console.log(item.radius);
-            
+            let is_hit = item.radius < (this.lidar_radius - 1);
+        
+            let is_dynamic_obstacle = is_hit && !field_obstacle_rays.has(item);
+
             return {
                 x: rel_x, 
                 y: rel_y, 
-                is_hit: item.radius < (this.lidar_radius - 1)
+                is_hit: is_hit,
+                ignore_in_mcl: is_dynamic_obstacle
             };
         });
 
         let sum_weights = 0;
-        // Loops through each particle in the sim, "moves"/projevcts the processed rays to the position of each point
-        // After this compares the actual "is_hit" value with the expected one if the robot was at the position of the mcl point
+
+        //projects processed rays into all mcl points 
+        //weight is adjusted based on is_hit match or mismatch
+        //dynamic obstacles are ignored
         this.mcl_points.forEach((particle) => {
             let total_error = 0; 
-            
             let real_position = particle.position;
-
-            let print = real_position.x == 0 && real_position.y == 0;
             
             processed_rays.forEach((ray) => {
+                if (ray.ignore_in_mcl) {
+                    return; 
+                }
+
                 let proj_x = ray.x + real_position.x;
                 let proj_y = ray.y + real_position.y;
                 
@@ -243,21 +292,11 @@ export class Robot{
                     let gridY = Math.floor(proj_y / 10) + 32;
                     
                     let map_value = this.field_map[gridY][gridX]; 
-                    /* if(print){
-                        console.log("Map value: " + map_value);
-                    } */
+                    
                     if (ray.is_hit) {
                         total_error += (1.0 - map_value);
-                        
-                        if(print){
-                            //console.log("Expected a ray hit here, map value is " + map_value);
-                        }
                     } else {
                         total_error += (map_value * 2.0); 
-
-                        if(print){
-                            //console.log("Expected empty space, map value is " + map_value);
-                        }
                     }
                 } else {
                     if (ray.is_hit) {
@@ -270,20 +309,14 @@ export class Robot{
             
             particle.weight = 1000.0 / (total_error + 1.0);
             sum_weights += particle.weight;
-            if(print){
-                console.log("Final error is " + particle.weight)
-            } 
         });
 
         this.mcl_points.forEach((particle) => {
             particle.weight /= sum_weights;
         });
-
-        
-       // this.mcl_points.sort((a, b) => (b.weight - a.weight));
     }
 
-    private getEstimatedPosition(): point_vector {
+    private getEstimatedPosition(): position_t {
     
         this.mcl_points.sort((a, b) => b.weight - a.weight);
 
@@ -293,18 +326,21 @@ export class Robot{
         let total_weight = 0;
         let weighted_x = 0;
         let weighted_y = 0;
+        let weighted_heading = 0;
 
         
         top_particles.forEach(p => {
             total_weight += p.weight;
             weighted_x += p.position.x * p.weight; 
             weighted_y += p.position.y * p.weight;
+            weighted_heading += p.position.heading * p.weight;
         });
 
         
         return {
             x: weighted_x / total_weight,
-            y: weighted_y / total_weight
+            y: weighted_y / total_weight,
+            heading: weighted_heading / total_weight
         };
     }
 
@@ -331,7 +367,7 @@ export class Robot{
             }
             
             new_particles.push({
-                position: { x: this.mcl_points[index].position.x, y: this.mcl_points[index].position.y },
+                position: { x: this.mcl_points[index].position.x, y: this.mcl_points[index].position.y, heading: this.mcl_points[index].position.heading},
                 weight: 1.0 / num_particles 
             });
         }
@@ -340,8 +376,9 @@ export class Robot{
         for (let i = 0; i < num_random; i++) {
             let rx = (Math.random() * 640) - 320;
             let ry = (Math.random() * 640) - 320;
+            let r_heading = (Math.random() * 360);
             new_particles.push({ 
-                position: { x: rx, y: ry }, 
+                position: { x: rx, y: ry, heading: r_heading}, 
                 weight: 1.0 / num_particles 
             });
         }
@@ -579,9 +616,18 @@ export class Robot{
         ctx.lineWidth = 3;
         ctx.stroke();
     });
+        //ctx.rotate((45 * Math.PI) / 180);
+        /* ctx.save();
 
+        // 3. Move the origin (0,0) to the center of where your rectangle will be
+        ctx.translate(this.position.x, this.position.y);
+
+        // 4. Rotate the context
+        ctx.rotate(45 * Math.PI / 180); */
         ctx.fillRect(this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size);
 
+        /* ctx.restore(); */
+        //ctx.rotate(-(45 * Math.PI) / 180);
         ctx.fillStyle = 'orange';
         this.mcl_points.forEach(p => {
             ctx.fillRect(p.position.x, p.position.y, 2, 2);
@@ -594,7 +640,12 @@ export class Robot{
 
         const actual_y_element = document.getElementById("actual-y");
         if(actual_y_element){
-            actual_y_element.innerText = `${this.position.y}`
+            actual_y_element.innerText = `${this.position.y},`
+        }
+
+        const actual_heading_element = document.getElementById("actual-heading");
+        if(actual_heading_element){
+            actual_heading_element.innerText = `${this.position.heading.toFixed(1)}`
         }
 
         const expected_x_element = document.getElementById("expected-x");
@@ -605,6 +656,10 @@ export class Robot{
         const expected_y_element = document.getElementById("expected-y");
         if(expected_y_element){
             expected_y_element.innerText = `${this.expected_position.y.toFixed(1)}`
+        }
+        const expected_heading_element = document.getElementById("expected-heading");
+        if(expected_heading_element){
+            expected_heading_element.innerText = `${this.expected_position.heading.toFixed(1)}`
         }
     }
 };

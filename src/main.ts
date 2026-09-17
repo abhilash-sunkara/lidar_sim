@@ -18,14 +18,16 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = /*html*/`
         </h1>
         <div class = "flex flex-row">
           <h1 id = "actual-x" class = "text-3xl text-indigo-200 mr-2"/> 
-          <h1 id = "actual-y" class = "text-3xl text-indigo-200"/> 
+          <h1 id = "actual-y" class = "text-3xl text-indigo-200 mr-2"/> 
+          <h1 id = "actual-heading" class = "text-3xl text-indigo-200"/> 
         </div>
         <h1 class = "text-3xl text-indigo-200"> 
           Expected Position
         </h1>
         <div class = "flex flex-row">
           <h1 id = "expected-x" class = "text-3xl text-indigo-200 mr-2"/> 
-          <h1 id = "expected-y" class = "text-3xl text-indigo-200"/> 
+          <h1 id = "expected-y" class = "text-3xl text-indigo-200 mr-2"/> 
+          <h1 id = "expected-heading" class = "text-3xl text-indigo-200"/> 
         </div>
         <div class="flex flex-col w-full">
           <label htmlFor="startingAngle" class="text-indigo-200 text-lg mb-1">Starting Angle</label>
