@@ -51,7 +51,28 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = /*html*/`
             class="border p-2 rounded text-black bg-white"
           />
         </div>
-      </div>
+        <div class="flex flex-col w-full">
+          <label htmlFor="numRays" class="text-indigo-200 text-lg mb-1"># Rays</label>
+          <input 
+            type="number"
+            id="numRays"
+            name="numRays" 
+            value="100"
+            step="any"
+            class="border p-2 rounded text-black bg-white"
+          />
+        </div>
+        <div class="flex flex-col w-full">
+          <label htmlFor="lidarRadius" class="text-indigo-200 text-lg mb-1">Lidar Radius</label>
+          <input 
+            type="number"
+            id="lidarRadius"
+            name="lidarRadius" 
+            value="300"
+            step="any"
+            class="border p-2 rounded text-black bg-white"
+          />
+        </div>
     </div>
     
   </div>
@@ -75,14 +96,18 @@ export function initCanvas() {
 
 const startAngleInput = document.getElementById('startingAngle') as HTMLInputElement;
 const endAngleInput = document.getElementById('endingAngle') as HTMLInputElement;
+const numRaysInput = document.getElementById('numRays') as HTMLInputElement;
+const lidarRadiusInput = document.getElementById('lidarRadius') as HTMLInputElement;
 
 export function render(t: number){
   ctx.clearRect(-320, -320, 640, 640);
 
   const startAngle = parseFloat(startAngleInput.value) || 0;
   const endAngle = parseFloat(endAngleInput.value) || 0;
+  const numRays = parseFloat(numRaysInput.value) || 0;
+  const lidarRadius = parseFloat(lidarRadiusInput.value) || 0;
 
-  r.render(ctx, startAngle, endAngle);
+  r.render(ctx, startAngle, endAngle, numRays, lidarRadius);
   f.render(ctx);
   or.render(ctx);
 

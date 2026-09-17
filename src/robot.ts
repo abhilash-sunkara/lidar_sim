@@ -52,6 +52,8 @@ export class Robot{
     private starting_angle: number = 0 * Math.PI;
     private ending_angle: number = 1 * Math.PI;
 
+    private num_rays: number = 100;
+
     private keys = {
         w: false,
         a: false,
@@ -70,7 +72,7 @@ export class Robot{
         this.setupInputListeners();
         this.lidar_array = [];
         this.lidar_radius = 300;
-        this.addLidarRays(this.lidar_radius, 100);
+        this.addLidarRays(this.lidar_radius, this.num_rays);
         this.obstacles = obs;
 
         this.mcl_points = [];
@@ -553,7 +555,7 @@ export class Robot{
 
     
 
-    render(ctx: CanvasRenderingContext2D, s_angle: number, e_angle: number){
+    render(ctx: CanvasRenderingContext2D, s_angle: number, e_angle: number, n_rays: number, l_radius: number){
         if(this.keys.p && !this.printed) {this.printLidarMap()};
         this.updateRobotPosition();
         this.updateLidarPosition();
@@ -569,9 +571,20 @@ export class Robot{
             this.starting_angle = s_angle;
             this.ending_angle = e_angle;
             console.log("trying to add new rays");
-            this.addLidarRays(this.lidar_radius, 100);
+            this.addLidarRays(this.lidar_radius, this.num_rays);
         }
 
+        if(n_rays != this.num_rays){
+            this.num_rays = n_rays;
+            console.log("trying to add new rays");
+            this.addLidarRays(this.lidar_radius, this.num_rays);
+        }
+
+        if(l_radius != this.lidar_radius){
+            this.lidar_radius = l_radius;
+            console.log("trying to add new rays");
+            this.addLidarRays(this.lidar_radius, this.num_rays);
+        }
         //this.analyzeLidarPoints();
         ctx.fillStyle = 'black'; 
         
