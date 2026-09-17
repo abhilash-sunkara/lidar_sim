@@ -99,7 +99,7 @@ const endAngleInput = document.getElementById('endingAngle') as HTMLInputElement
 const numRaysInput = document.getElementById('numRays') as HTMLInputElement;
 const lidarRadiusInput = document.getElementById('lidarRadius') as HTMLInputElement;
 
-export function render(t: number){
+export function render(){
   ctx.clearRect(-320, -320, 640, 640);
 
   const startAngle = parseFloat(startAngleInput.value) || 0;
@@ -120,4 +120,4 @@ let r = new Robot(-240, 0, f.get_obstacle_array(), f.get_obstacle_filter(), or.g
 
 initCanvas();
 
-render(0);
+render();

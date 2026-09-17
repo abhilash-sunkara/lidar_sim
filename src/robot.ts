@@ -531,10 +531,10 @@ export class Robot{
 }
 
     private printLidarMap(){
-        this.lidar_array.forEach((item) => {
+       /*  this.lidar_array.forEach((item) => {
             //console.log("start x: " + item.start_pos.x + ", start y: " + item.start_pos.y + " end x: " + item.end_pos.x + ", end y: " + item.end_pos.y)
             //console.log("Radius: " + item.radius + ", Angle: " + item.angle)
-        })
+        }) */
 
         this.analyzeLidarPoints();
         this.mcl_points.forEach((item) => {

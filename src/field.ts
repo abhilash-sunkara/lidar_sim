@@ -131,7 +131,7 @@ export class Field{
         });
     }
 
-    private print_high_weights(grid: number[][]) {
+    /* private print_high_weights(grid: number[][]) {
         const TILE_SIZE = 10; 
 
         for (let y = 0; y < grid.length; y++) {
@@ -146,7 +146,7 @@ export class Field{
                 }
             }
         }
-    }
+    } */
 
     render(ctx: CanvasRenderingContext2D){
         if(this.keys.p && !this.printed) {
