@@ -143,8 +143,8 @@ export class Robot{
         if (this.keys.s) dy -= this.speed;
         if (this.keys.a) dx -= this.speed;
         if (this.keys.d) dx += this.speed;
-        //if (this.keys.q) d_theta -= this.speed/50;
-        //if (this.keys.e) d_theta += this.speed/50;
+        if (this.keys.q) d_theta -= this.speed/50;
+        if (this.keys.e) d_theta += this.speed/50;
         if(this.keys.e || this.keys.q) this.need_to_update_lidar_angle = true;
 
         if (dx !== 0 || dy !== 0 || d_theta !== 0) {
@@ -170,29 +170,18 @@ export class Robot{
     }
 
     private updateLidarPosition() {
-        this.lidar_array.forEach((item) => {
-            //let dx = this.position.x - item.start_pos.x;
-            //let dy = this.position.y - item.start_pos.y;
+        let heading_offset_rad = (this.position.heading / 180) * Math.PI;
 
+        this.lidar_array.forEach((item) => {
             item.start_pos.x = this.position.x;
             item.start_pos.y = this.position.y;
-            //item.end_pos.x = item.end_pos.x + dx;
-            //item.end_pos.y = item.end_pos.y + dy;
 
-            let heading_offset = this.position.heading / 180 * Math.PI;
-            //let original_angle = item.angle;
-            if(this.need_to_update_lidar_angle){
-                item.angle = item.angle + heading_offset;
-                
-            }
-            
+            let global_angle = item.angle + heading_offset_rad;
 
-            item.end_pos.x = this.lidar_radius * Math.cos(item.angle) + item.start_pos.x;
-            item.end_pos.y = this.lidar_radius * Math.sin(item.angle) + item.start_pos.y;
+            item.end_pos.x = this.lidar_radius * Math.cos(global_angle) + item.start_pos.x;
+            item.end_pos.y = this.lidar_radius * Math.sin(global_angle) + item.start_pos.y;
 
-            
-
-            let new_endpoint: point_vector | null = check_wall_collision({x: item.start_pos.x, y: item.start_pos.y}, {x: item.end_pos.x, y: item.end_pos.y}, item.angle);
+            let new_endpoint: point_vector | null = check_wall_collision({x: item.start_pos.x, y: item.start_pos.y}, {x: item.end_pos.x, y: item.end_pos.y}, global_angle);
             if(new_endpoint){
                 item.end_pos.x = new_endpoint.x;
                 item.end_pos.y = new_endpoint.y;
@@ -200,7 +189,7 @@ export class Robot{
 
             let new_wall_point_real: point_vector | null = {x: 0, y:0};
             this.obstacles.forEach((item_o) => {
-                let new_wall_point = check_rect_collision({x: item.start_pos.x, y: item.start_pos.y}, item.angle, this.lidar_radius, item_o);
+                let new_wall_point = check_rect_collision({x: item.start_pos.x, y: item.start_pos.y}, global_angle, this.lidar_radius, item_o);
                 if(new_wall_point){
                     item.end_pos.x = new_wall_point.x;
                     item.end_pos.y = new_wall_point.y;
@@ -208,12 +197,12 @@ export class Robot{
                 }
             })
 
-            let new_orobot_point = check_rect_collision({x: item.start_pos.x, y: item.start_pos.y}, item.angle, this.lidar_radius, {min: {x: this.opp_rob_pos.x - 40, y: this.opp_rob_pos.y - 40}, max: {x: this.opp_rob_pos.x + 40, y: this.opp_rob_pos.y + 40}});
+            let new_orobot_point = check_rect_collision({x: item.start_pos.x, y: item.start_pos.y}, global_angle, this.lidar_radius, {min: {x: this.opp_rob_pos.x - 40, y: this.opp_rob_pos.y - 40}, max: {x: this.opp_rob_pos.x + 40, y: this.opp_rob_pos.y + 40}});
             if(new_orobot_point){
                 item.end_pos.x = new_orobot_point.x;
                 item.end_pos.y = new_orobot_point.y;
             }
-            //console.log(new_wall_point_real)
+            
             if(new_orobot_point && new_wall_point_real){
                 if(get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: new_orobot_point.x, y: new_orobot_point.y}) < get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: new_wall_point_real.x, y: new_wall_point_real.y})){
                     item.end_pos.x = new_orobot_point.x;
@@ -223,29 +212,25 @@ export class Robot{
                     item.end_pos.y = new_wall_point_real.y;
                 }
             }
-            //converts to polar
+            
             let dx = item.end_pos.x - item.start_pos.x; 
             let dy = item.end_pos.y - item.start_pos.y;
             let distance = Math.sqrt(dx * dx + dy * dy);
-            let angle = Math.atan2(dy, dx);
+            let final_noisy_global_angle = Math.atan2(dy, dx);
 
-            //applies noise to distance
             let range_noise = this.getGaussianNoise(0, 2.0); 
             let noisy_distance = distance + range_noise;
 
-            //converts to rectangular
-            item.end_pos.x = noisy_distance * Math.cos(angle) + item.start_pos.x;
-            item.end_pos.y = noisy_distance * Math.sin(angle) + item.start_pos.y;
+            item.end_pos.x = noisy_distance * Math.cos(final_noisy_global_angle) + item.start_pos.x;
+            item.end_pos.y = noisy_distance * Math.sin(final_noisy_global_angle) + item.start_pos.y;
             
-            item.radius = get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: item.end_pos.x, y: item.end_pos.y})
-            //item.angle = original_angle;
+            item.radius = get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: item.end_pos.x, y: item.end_pos.y});
         })
+        
         this.need_to_update_lidar_angle = false;
     }
 
     private analyzeLidarPoints() {
-        //loops through lidar rays to make a set of all rays that hit a known field obstacle.
-        //used for checking if one hit later
         let field_obstacle_rays = new Set<lidar_ray>();
         this.detected_objects.forEach((item) => {
             if(item.obstacle_type == ObstacleType.FIELD_OBSTACLE) {
@@ -255,18 +240,13 @@ export class Robot{
             }
         });
 
-        //process all rays, and tag dynamic obstacles
-        //ignore if is_hit and is_dynamic_obstacle (basically any hit that is not a field obstacle)
         let processed_rays = this.lidar_array.map((item) => {
-            let rel_x = item.end_pos.x - item.start_pos.x;
-            let rel_y = item.end_pos.y - item.start_pos.y;
             let is_hit = item.radius < (this.lidar_radius - 1);
-        
             let is_dynamic_obstacle = is_hit && !field_obstacle_rays.has(item);
 
             return {
-                x: rel_x, 
-                y: rel_y, 
+                distance: item.radius,
+                local_angle: item.angle, 
                 is_hit: is_hit,
                 ignore_in_mcl: is_dynamic_obstacle
             };
@@ -274,20 +254,22 @@ export class Robot{
 
         let sum_weights = 0;
 
-        //projects processed rays into all mcl points 
-        //weight is adjusted based on is_hit match or mismatch
-        //dynamic obstacles are ignored
         this.mcl_points.forEach((particle) => {
             let total_error = 0; 
             let real_position = particle.position;
+            
+            let particle_heading_rad = (real_position.heading / 180) * Math.PI;
             
             processed_rays.forEach((ray) => {
                 if (ray.ignore_in_mcl) {
                     return; 
                 }
 
-                let proj_x = ray.x + real_position.x;
-                let proj_y = ray.y + real_position.y;
+                let global_ray_angle = particle_heading_rad + ray.local_angle;
+
+                
+                let proj_x = real_position.x + ray.distance * Math.cos(global_ray_angle);
+                let proj_y = real_position.y + ray.distance * Math.sin(global_ray_angle);
                 
                 if(proj_x > -320 && proj_x < 320 && proj_y > -320 && proj_y < 320) {
                     let gridX = Math.floor(proj_x / 10) + 32;
@@ -303,8 +285,6 @@ export class Robot{
                 } else {
                     if (ray.is_hit) {
                         total_error += 1.0; 
-                    } else {
-                        total_error += 0; 
                     }
                 }
             });
@@ -524,7 +504,7 @@ export class Robot{
             item.obstacle_type = ObstacleType.WALL;
         } else if (majorLength <= 40 && linearity < 0.6) {
             item.obstacle_type = ObstacleType.ROBOT; 
-        } else {
+        } else{
             item.obstacle_type = ObstacleType.FIELD_OBSTACLE;
         }
     });
@@ -562,9 +542,12 @@ export class Robot{
         this.generateClusters();
         this.analyzeClusters();
 
-        this.analyzeLidarPoints();
+        let is_moving = (this.keys.w || this.keys.s || this.keys.a || this.keys.d || this.keys.q || this.keys.e);
+        if (is_moving) {
+            this.analyzeLidarPoints();
+            this.resampleParticles();
+        }
         this.expected_position = this.getEstimatedPosition();
-        this.resampleParticles();
 
 
         if(s_angle != this.starting_angle || e_angle != this.ending_angle){
@@ -630,16 +613,20 @@ export class Robot{
         ctx.stroke();
     });
         //ctx.rotate((45 * Math.PI) / 180);
-        /* ctx.save();
+        ctx.save();
 
-        // 3. Move the origin (0,0) to the center of where your rectangle will be
         ctx.translate(this.position.x, this.position.y);
 
-        // 4. Rotate the context
-        ctx.rotate(45 * Math.PI / 180); */
-        ctx.fillRect(this.position.x - this.size / 2, this.position.y - this.size / 2, this.size, this.size);
+        let heading_rad = (this.position.heading * Math.PI) / 180;
+        ctx.rotate(heading_rad);        
+        ctx.fillStyle = 'black'; 
+        ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
 
-        /* ctx.restore(); */
+        ctx.fillStyle = 'yellow';
+        ctx.fillRect(0, -this.size / 4, this.size / 2, this.size / 2);
+
+        
+        ctx.restore();
         //ctx.rotate(-(45 * Math.PI) / 180);
         ctx.fillStyle = 'orange';
         this.mcl_points.forEach(p => {
