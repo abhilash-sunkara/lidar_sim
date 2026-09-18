@@ -35,7 +35,7 @@ export class Robot{
     private lidar_array: lidar_ray[];
     private obstacles: rect_obstacle[];
     private lidar_radius: number;
-    private need_to_update_lidar_angle: boolean = false;
+    //private need_to_update_lidar_angle: boolean = false;
 
     private detected_objects: cluster[] = [];
 
@@ -145,7 +145,7 @@ export class Robot{
         if (this.keys.d) dx += this.speed;
         if (this.keys.q) d_theta -= this.speed/50;
         if (this.keys.e) d_theta += this.speed/50;
-        if(this.keys.e || this.keys.q) this.need_to_update_lidar_angle = true;
+        //if(this.keys.e || this.keys.q) this.need_to_update_lidar_angle = true;
 
         if (dx !== 0 || dy !== 0 || d_theta !== 0) {
             this.position.x += dx;
@@ -227,7 +227,7 @@ export class Robot{
             item.radius = get_distance({x: item.start_pos.x, y: item.start_pos.y}, {x: item.end_pos.x, y: item.end_pos.y});
         })
         
-        this.need_to_update_lidar_angle = false;
+        //this.need_to_update_lidar_angle = false;
     }
 
     private analyzeLidarPoints() {
